@@ -29,13 +29,13 @@ public class ByteSeq {
         return Arrays.copyOf(bytes, bytes.length);
     }
 
-    public ByteSeq prefixEndForDirectory() {
+    public ByteSeq increasedLastByte() {
         if (isEmpty()) {
             return this;
         }
         byte[] bytes = getBytes();
         bytes[bytes.length - 1] += 1;
-        return from(bytes);
+        return new ByteSeq(bytes);
     }
 
     @Override

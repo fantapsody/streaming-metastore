@@ -40,10 +40,10 @@ public abstract class AbstractKVClientTest {
                 assertArrayEquals(value.getBytes(StandardCharsets.UTF_8), getResult.get().getKeyValue().getValue().getBytes());
             }
 
-            GetRangeResult getRangeResult = client.getRange(ByteSeq.from("/"), ByteSeq.from("/").prefixEndForDirectory(), null).join();
+            GetRangeResult getRangeResult = client.getRange(ByteSeq.from("/"), ByteSeq.from("/").increasedLastByte(), null).join();
             assertEquals(count * 2, getRangeResult.getKeyValueList().size());
 
-            getRangeResult = client.getRange(ByteSeq.from(dirPrefix), ByteSeq.from(dirPrefix).prefixEndForDirectory(), null).join();
+            getRangeResult = client.getRange(ByteSeq.from(dirPrefix), ByteSeq.from(dirPrefix).increasedLastByte(), null).join();
             assertEquals(count, getRangeResult.getKeyValueList().size());
             for (int i = 0; i < getRangeResult.getKeyValueList().size(); i++) {
                 String key = dirPrefix + i;
