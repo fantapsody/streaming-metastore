@@ -1,0 +1,6 @@
+rootProject.name = 'streaming-metastore'
+include 'api'
+include 'test-framework'
+include 'rocksdb-local'
+include 'etcd'
+
