@@ -91,7 +91,7 @@ public class LocalRocksDBMetaStore implements Closeable, KVClient {
             } catch (RocksDBException e) {
                 throw new RuntimeException(e);
             }
-            return new PutResult(new ResultHeader(0, 0));
+            return new PutResult(new ResultHeader(0, 0), new KeyValueMetaData(0, 0, 0));
         });
     }
 

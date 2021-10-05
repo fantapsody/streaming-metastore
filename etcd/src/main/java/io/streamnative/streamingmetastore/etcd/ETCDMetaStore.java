@@ -5,9 +5,16 @@ import io.etcd.jetcd.Client;
 import io.etcd.jetcd.KV;
 import io.etcd.jetcd.Lease;
 import io.etcd.jetcd.Response;
+import io.etcd.jetcd.Txn;
 import io.etcd.jetcd.Watch;
+import io.etcd.jetcd.kv.GetResponse;
 import io.etcd.jetcd.lease.LeaseKeepAliveResponse;
+import io.etcd.jetcd.op.Cmp;
+import io.etcd.jetcd.op.CmpTarget;
+import io.etcd.jetcd.op.Op;
+import io.etcd.jetcd.options.DeleteOption;
 import io.etcd.jetcd.options.GetOption;
+import io.etcd.jetcd.options.PutOption;
 import io.etcd.jetcd.watch.WatchResponse;
 import io.grpc.stub.StreamObserver;
 import io.streamnative.streamingmetastore.api.ByteSeq;
@@ -15,6 +22,7 @@ import io.streamnative.streamingmetastore.api.EventObserver;
 import io.streamnative.streamingmetastore.api.KeyValue;
 import io.streamnative.streamingmetastore.api.KeyValueMetaData;
 import io.streamnative.streamingmetastore.api.StreamingMetaStoreClient;
+import io.streamnative.streamingmetastore.api.StreamingMetaStoreException;
 import io.streamnative.streamingmetastore.api.messages.DeleteResult;
 import io.streamnative.streamingmetastore.api.messages.GetRangeResult;
 import io.streamnative.streamingmetastore.api.messages.GetResult;
@@ -107,14 +115,53 @@ public class ETCDMetaStore implements StreamingMetaStoreClient {
 
     @Override
     public CompletableFuture<PutResult> put(ByteSeq key, ByteSeq value, PutOptions options) {
-        return this.kvClient.put(ByteSequence.from(key.getBytes()), ByteSequence.from(value.getBytes()))
-                .thenApply(response -> new PutResult(convert(response.getHeader())));
+        Txn txn;
+        if (options != null && options.getExpectedRevision() != null) {
+            txn = this.kvClient.txn()
+                    .If(new Cmp(ByteSequence.from(key.getBytes()),
+                            Cmp.Op.EQUAL,
+                            CmpTarget.modRevision(options.getExpectedRevision())))
+                    .Then(Op.put(ByteSequence.from(key.getBytes()), ByteSequence.from(value.getBytes()), PutOption.DEFAULT),
+                            Op.get(ByteSequence.from(key.getBytes()), GetOption.DEFAULT))
+                    .Else(Op.get(ByteSequence.from(key.getBytes()), GetOption.DEFAULT));
+        } else {
+            txn = this.kvClient.txn()
+                    .Then(Op.put(ByteSequence.from(key.getBytes()), ByteSequence.from(value.getBytes()), PutOption.DEFAULT),
+                            Op.get(ByteSequence.from(key.getBytes()), GetOption.DEFAULT));
+        }
+        return txn.commit().thenApply(response -> {
+            if (response.isSucceeded()) {
+                GetResponse get = response.getGetResponses().get(0);
+                io.etcd.jetcd.KeyValue kv = get.getKvs().get(0);
+                return new PutResult(convert(response.getHeader()),
+                        new KeyValueMetaData(kv.getCreateRevision(), kv.getModRevision(), kv.getVersion()));
+            } else {
+                throw new StreamingMetaStoreException.BadVersionException();
+            }
+        });
     }
 
     @Override
     public CompletableFuture<DeleteResult> delete(ByteSeq key, DeleteOptions options) {
-        return this.kvClient.delete(ByteSequence.from(key.getBytes()))
-                .thenApply(response -> new DeleteResult(convert(response.getHeader())));
+        Txn txn;
+        if (options != null && options.getExpectedRevision() != null) {
+            txn = this.kvClient.txn()
+                    .If(new Cmp(ByteSequence.from(key.getBytes()),
+                            Cmp.Op.EQUAL,
+                            CmpTarget.modRevision(options.getExpectedRevision())))
+                    .Then(Op.delete(ByteSequence.from(key.getBytes()), DeleteOption.DEFAULT));
+        } else {
+            txn = this.kvClient.txn()
+                    .Then(Op.delete(ByteSequence.from(key.getBytes()), DeleteOption.DEFAULT));
+        }
+        return txn.commit()
+                .thenApply(txnResponse -> {
+                    if (txnResponse.isSucceeded()) {
+                        return new DeleteResult(convert(txnResponse.getHeader()));
+                    } else {
+                        throw new StreamingMetaStoreException.BadVersionException();
+                    }
+                });
     }
 
     @Override

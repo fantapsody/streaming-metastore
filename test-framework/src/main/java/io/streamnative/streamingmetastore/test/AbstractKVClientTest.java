@@ -11,6 +11,7 @@ import io.streamnative.streamingmetastore.api.KVClient;
 import io.streamnative.streamingmetastore.api.KeyValue;
 import io.streamnative.streamingmetastore.api.messages.GetRangeResult;
 import io.streamnative.streamingmetastore.api.messages.GetResult;
+import io.streamnative.streamingmetastore.api.messages.PutResult;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -28,7 +29,8 @@ public abstract class AbstractKVClientTest {
             for (int i = 0; i < count; i++) {
                 String key = keyPrefix + i;
                 String value = valuePrefix + i;
-                assertNotNull(client.put(ByteSeq.from(key), ByteSeq.from(value), null).join());
+                PutResult putResponse = client.put(ByteSeq.from(key), ByteSeq.from(value), null).join();
+                assertNotNull(putResponse);
                 Optional<GetResult> getResult = client.get(ByteSeq.from(key), null).join();
                 assertTrue(getResult.isPresent());
                 assertArrayEquals(value.getBytes(StandardCharsets.UTF_8), getResult.get().getKeyValue().getValue().getBytes());
