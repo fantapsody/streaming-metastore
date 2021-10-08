@@ -18,5 +18,6 @@ public interface WatchClient extends AutoCloseable {
     class WatchOption {
         private final boolean prefix;
         private final boolean prevKV;
+        private final Long revision;
     }
 }

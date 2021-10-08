@@ -194,6 +194,9 @@ public class ETCDMetaStore implements StreamingMetaStoreClient {
         io.etcd.jetcd.options.WatchOption.Builder builder = io.etcd.jetcd.options.WatchOption.newBuilder();
         builder.isPrefix(option.isPrefix());
         builder.withPrevKV(option.isPrevKV());
+        if (option.getRevision() != null) {
+            builder.withRevision(option.getRevision());
+        }
         return builder.build();
     }
 
