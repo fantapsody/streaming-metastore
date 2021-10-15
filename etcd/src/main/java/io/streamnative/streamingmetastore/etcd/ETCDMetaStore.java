@@ -120,11 +120,11 @@ public class ETCDMetaStore implements StreamingMetaStoreClient {
         if (options != null && options.getLeaseId() != null) {
             builder.withLeaseId(options.getLeaseId());
         }
-        if (options != null && options.getExpectedRevision() != null) {
+        if (options != null && options.getExpectedVersion() != null) {
             txn = this.kvClient.txn()
                     .If(new Cmp(ByteSequence.from(key.getBytes()),
                             Cmp.Op.EQUAL,
-                            CmpTarget.modRevision(options.getExpectedRevision())))
+                            CmpTarget.version(options.getExpectedVersion())))
                     .Then(Op.put(ByteSequence.from(key.getBytes()), ByteSequence.from(value.getBytes()), builder.build()),
                             Op.get(ByteSequence.from(key.getBytes()), GetOption.DEFAULT))
                     .Else(Op.get(ByteSequence.from(key.getBytes()), GetOption.DEFAULT));
@@ -148,11 +148,11 @@ public class ETCDMetaStore implements StreamingMetaStoreClient {
     @Override
     public CompletableFuture<DeleteResult> delete(ByteSeq key, DeleteOptions options) {
         Txn txn;
-        if (options != null && options.getExpectedRevision() != null) {
+        if (options != null && options.getExpectedVersion() != null) {
             txn = this.kvClient.txn()
                     .If(new Cmp(ByteSequence.from(key.getBytes()),
                             Cmp.Op.EQUAL,
-                            CmpTarget.modRevision(options.getExpectedRevision())))
+                            CmpTarget.version(options.getExpectedVersion())))
                     .Then(Op.delete(ByteSequence.from(key.getBytes()), DeleteOption.DEFAULT));
         } else {
             txn = this.kvClient.txn()
