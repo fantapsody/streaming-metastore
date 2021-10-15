@@ -116,17 +116,21 @@ public class ETCDMetaStore implements StreamingMetaStoreClient {
     @Override
     public CompletableFuture<PutResult> put(ByteSeq key, ByteSeq value, PutOptions options) {
         Txn txn;
+        PutOption.Builder builder = PutOption.newBuilder();
+        if (options != null && options.getLeaseId() != null) {
+            builder.withLeaseId(options.getLeaseId());
+        }
         if (options != null && options.getExpectedRevision() != null) {
             txn = this.kvClient.txn()
                     .If(new Cmp(ByteSequence.from(key.getBytes()),
                             Cmp.Op.EQUAL,
                             CmpTarget.modRevision(options.getExpectedRevision())))
-                    .Then(Op.put(ByteSequence.from(key.getBytes()), ByteSequence.from(value.getBytes()), PutOption.DEFAULT),
+                    .Then(Op.put(ByteSequence.from(key.getBytes()), ByteSequence.from(value.getBytes()), builder.build()),
                             Op.get(ByteSequence.from(key.getBytes()), GetOption.DEFAULT))
                     .Else(Op.get(ByteSequence.from(key.getBytes()), GetOption.DEFAULT));
         } else {
             txn = this.kvClient.txn()
-                    .Then(Op.put(ByteSequence.from(key.getBytes()), ByteSequence.from(value.getBytes()), PutOption.DEFAULT),
+                    .Then(Op.put(ByteSequence.from(key.getBytes()), ByteSequence.from(value.getBytes()), builder.build()),
                             Op.get(ByteSequence.from(key.getBytes()), GetOption.DEFAULT));
         }
         return txn.commit().thenApply(response -> {

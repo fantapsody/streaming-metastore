@@ -31,6 +31,7 @@ public interface KVClient extends AutoCloseable {
     @Builder
     class PutOptions {
         Long expectedRevision;
+        Long leaseId;
     }
 
     @Data
