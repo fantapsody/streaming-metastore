@@ -20,24 +20,28 @@ public interface KVClient extends AutoCloseable {
     CompletableFuture<DeleteResult> delete(ByteSeq key, DeleteOptions options);
 
     @Data
+    @Builder
     class GetOptions {
     }
 
     @Data
+    @Builder
     class GetRangeOptions {
+        private boolean keysOnly;
+        private long limit;
     }
 
     @Data
     @Builder
     class PutOptions {
-        Long expectedVersion;
-        Long leaseId;
+        private Long expectedVersion;
+        private Long leaseId;
     }
 
     @Data
     @Builder
     class DeleteOptions {
-        String endKey;
-        Long expectedVersion;
+        private String endKey;
+        private Long expectedVersion;
     }
 }

@@ -57,9 +57,15 @@ public class ETCDMetaStore implements StreamingMetaStoreClient {
         if (kv.getCreateRevision() == 0 && kv.getKey().isEmpty() && kv.getValue().isEmpty()) {
             return KeyValue.EMPTY;
         }
+        ByteSeq key = ByteSeq.from(kv.getKey().getBytes());
+        ByteSeq value;
+        if (kv.getValue() == null || kv.getValue().isEmpty()) {
+            value = ByteSeq.EMPTY;
+        } else {
+            value = ByteSeq.from(kv.getValue().getBytes());
+        }
         return new KeyValue(new KeyValueMetaData(kv.getCreateRevision(), kv.getModRevision(), kv.getVersion()),
-                ByteSeq.from(kv.getKey().getBytes()),
-                ByteSeq.from(kv.getValue().getBytes()));
+                key, value);
     }
 
     static ResultHeader convert(Response.Header header) {
@@ -101,9 +107,15 @@ public class ETCDMetaStore implements StreamingMetaStoreClient {
 
     @Override
     public CompletableFuture<GetRangeResult> getRange(ByteSeq start, ByteSeq end, GetRangeOptions options) {
-        GetOption.Builder builder = GetOption.newBuilder();
+        GetOption.Builder builder = GetOption.newBuilder()
+                .withSortField(GetOption.SortTarget.KEY)
+                .withSortOrder(GetOption.SortOrder.ASCEND);
         if (end != null) {
             builder.withRange(ByteSequence.from(end.getBytes()));
+        }
+        if (options != null) {
+            builder.withKeysOnly(options.isKeysOnly());
+            builder.withLimit(options.getLimit());
         }
 
         return this.kvClient.get(ByteSequence.from(start.getBytes()), builder.build())
