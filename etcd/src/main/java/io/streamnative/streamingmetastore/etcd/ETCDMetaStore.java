@@ -217,6 +217,12 @@ public class ETCDMetaStore implements StreamingMetaStoreClient {
     }
 
     @Override
+    public CompletableFuture<Long> generateId(String group) {
+        return put(ByteSeq.from("/ids/" + group), ByteSeq.EMPTY, null)
+                .thenApply(res -> res.getKeyValueMetaData().getVersion());
+    }
+
+    @Override
     public void close() throws IOException {
         this.client.close();
     }
