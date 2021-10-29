@@ -39,12 +39,18 @@ import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 public class ETCDMetaStore implements StreamingMetaStoreClient {
+    private final ByteSeq keyPrefix;
     private final Client client;
     private final KV kvClient;
     private final Watch watchClient;
     private final Lease leaseClient;
 
     public ETCDMetaStore(String endpoints) {
+        this(endpoints, null);
+    }
+
+    public ETCDMetaStore(String endpoints, ByteSeq keyPrefix) {
+        this.keyPrefix = keyPrefix;
         this.client = Client.builder()
                 .endpoints(endpoints)
                 .build();
@@ -53,11 +59,19 @@ public class ETCDMetaStore implements StreamingMetaStoreClient {
         this.leaseClient = client.getLeaseClient();
     }
 
-    static KeyValue convert(io.etcd.jetcd.KeyValue kv) {
+    static ResultHeader convert(Response.Header header) {
+        return new ResultHeader(header.getRaftTerm(), header.getRevision());
+    }
+
+    private static Watcher convert(Watch.Watcher watcher) {
+        return watcher::close;
+    }
+
+    KeyValue convert(io.etcd.jetcd.KeyValue kv) {
         if (kv.getCreateRevision() == 0 && kv.getKey().isEmpty() && kv.getValue().isEmpty()) {
             return KeyValue.EMPTY;
         }
-        ByteSeq key = ByteSeq.from(kv.getKey().getBytes());
+        ByteSeq key = trimKey(ByteSeq.from(kv.getKey().getBytes()));
         ByteSeq value;
         if (kv.getValue() == null || kv.getValue().isEmpty()) {
             value = ByteSeq.EMPTY;
@@ -68,11 +82,7 @@ public class ETCDMetaStore implements StreamingMetaStoreClient {
                 key, value);
     }
 
-    static ResultHeader convert(Response.Header header) {
-        return new ResultHeader(header.getRaftTerm(), header.getRevision());
-    }
-
-    static WatchEvent convert(io.etcd.jetcd.watch.WatchEvent event) {
+    WatchEvent convert(io.etcd.jetcd.watch.WatchEvent event) {
         WatchEvent.EventType eventType;
         switch (event.getEventType()) {
             case PUT:
@@ -88,13 +98,23 @@ public class ETCDMetaStore implements StreamingMetaStoreClient {
         return new WatchEvent(convert(event.getKeyValue()), convert(event.getPrevKV()), eventType);
     }
 
-    private static Watcher convert(Watch.Watcher watcher) {
-        return watcher::close;
+    private ByteSeq makeKey(ByteSeq key) {
+        if (keyPrefix == null || keyPrefix.isEmpty()) {
+            return key;
+        }
+        return keyPrefix.append(key);
+    }
+
+    private ByteSeq trimKey(ByteSeq key) {
+        if (keyPrefix == null || keyPrefix.isEmpty()) {
+            return key;
+        }
+        return key.subSeq(keyPrefix.size());
     }
 
     @Override
     public CompletableFuture<Optional<GetResult>> get(ByteSeq key, GetOptions options) {
-        return this.kvClient.get(ByteSequence.from(key.getBytes()), GetOption.newBuilder().build())
+        return this.kvClient.get(ByteSequence.from(makeKey(key).getBytes()), GetOption.newBuilder().build())
                 .thenApply(response -> {
                     if (response.getCount() == 0) {
                         return Optional.empty();
@@ -111,23 +131,24 @@ public class ETCDMetaStore implements StreamingMetaStoreClient {
                 .withSortField(GetOption.SortTarget.KEY)
                 .withSortOrder(GetOption.SortOrder.ASCEND);
         if (end != null) {
-            builder.withRange(ByteSequence.from(end.getBytes()));
+            builder.withRange(ByteSequence.from(makeKey(end).getBytes()));
         }
         if (options != null) {
             builder.withKeysOnly(options.isKeysOnly());
             builder.withLimit(options.getLimit());
         }
 
-        return this.kvClient.get(ByteSequence.from(start.getBytes()), builder.build())
+        return this.kvClient.get(ByteSequence.from(makeKey(start).getBytes()), builder.build())
                 .thenApply(response -> new GetRangeResult(convert(response.getHeader()),
                         response.getKvs().stream()
-                                .map(ETCDMetaStore::convert)
+                                .map(this::convert)
                                 .collect(Collectors.toList())));
     }
 
     @Override
     public CompletableFuture<PutResult> put(ByteSeq key, ByteSeq value, PutOptions options) {
         Txn txn;
+        key = makeKey(key);
         PutOption.Builder builder = PutOption.newBuilder();
         if (options != null && options.getLeaseId() != null) {
             builder.withLeaseId(options.getLeaseId());
@@ -160,6 +181,7 @@ public class ETCDMetaStore implements StreamingMetaStoreClient {
     @Override
     public CompletableFuture<DeleteResult> delete(ByteSeq key, DeleteOptions options) {
         Txn txn;
+        key = makeKey(key);
         if (options != null && options.getExpectedVersion() != null) {
             txn = this.kvClient.txn()
                     .If(new Cmp(ByteSequence.from(key.getBytes()),
@@ -199,7 +221,7 @@ public class ETCDMetaStore implements StreamingMetaStoreClient {
 
     @Override
     public Watcher watch(ByteSeq key, EventObserver<WatchResult> listener, WatchOption option) {
-        return convert(this.watchClient.watch(ByteSequence.from(key.getBytes()),
+        return convert(this.watchClient.watch(ByteSequence.from(makeKey(key).getBytes()),
                 convert(option), new EtcdWatcherListenerAdaptor(listener)));
     }
 
@@ -218,40 +240,13 @@ public class ETCDMetaStore implements StreamingMetaStoreClient {
 
     @Override
     public CompletableFuture<Long> generateId(String group) {
-        return put(ByteSeq.from("/ids/" + group), ByteSeq.EMPTY, null)
+        return put(makeKey(ByteSeq.from("/__sys/ids/" + group)), ByteSeq.EMPTY, null)
                 .thenApply(res -> res.getKeyValueMetaData().getVersion());
     }
 
     @Override
     public void close() throws IOException {
         this.client.close();
-    }
-
-    static class EtcdWatcherListenerAdaptor implements Watch.Listener {
-        private final EventObserver<WatchResult> observer;
-
-        public EtcdWatcherListenerAdaptor(EventObserver<WatchResult> observer) {
-            this.observer = observer;
-        }
-
-        @Override
-        public void onNext(WatchResponse response) {
-            WatchResult watchResult = new WatchResult(convert(response.getHeader()),
-                    response.getEvents().stream()
-                            .map(ETCDMetaStore::convert)
-                            .collect(Collectors.toList()));
-            observer.onNext(watchResult);
-        }
-
-        @Override
-        public void onError(Throwable throwable) {
-            observer.onError(throwable);
-        }
-
-        @Override
-        public void onCompleted() {
-            observer.onCompleted();
-        }
     }
 
     static class KeepAliveAdaptor implements StreamObserver<LeaseKeepAliveResponse> {
@@ -274,6 +269,33 @@ public class ETCDMetaStore implements StreamingMetaStoreClient {
         @Override
         public void onCompleted() {
             this.observer.onCompleted();
+        }
+    }
+
+    class EtcdWatcherListenerAdaptor implements Watch.Listener {
+        private final EventObserver<WatchResult> observer;
+
+        public EtcdWatcherListenerAdaptor(EventObserver<WatchResult> observer) {
+            this.observer = observer;
+        }
+
+        @Override
+        public void onNext(WatchResponse response) {
+            WatchResult watchResult = new WatchResult(convert(response.getHeader()),
+                    response.getEvents().stream()
+                            .map(ETCDMetaStore.this::convert)
+                            .collect(Collectors.toList()));
+            observer.onNext(watchResult);
+        }
+
+        @Override
+        public void onError(Throwable throwable) {
+            observer.onError(throwable);
+        }
+
+        @Override
+        public void onCompleted() {
+            observer.onCompleted();
         }
     }
 }

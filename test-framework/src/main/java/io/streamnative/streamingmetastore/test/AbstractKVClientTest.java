@@ -53,6 +53,8 @@ public abstract class AbstractKVClientTest {
                 KeyValue kv = getRangeResult.getKeyValueList().get(i);
                 assertEquals(key, kv.getKey().toString());
                 assertEquals(value, kv.getValue().toString());
+
+                client.delete(kv.getKey(), null).join();
             }
 
             for (int i = 0; i < count; i++) {

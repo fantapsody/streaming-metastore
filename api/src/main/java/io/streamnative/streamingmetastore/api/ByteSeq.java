@@ -29,6 +29,21 @@ public class ByteSeq {
         return Arrays.copyOf(bytes, bytes.length);
     }
 
+    public int size() {
+        return bytes.length;
+    }
+
+    public ByteSeq append(ByteSeq seq) {
+        byte[] newBytes = new byte[this.bytes.length + seq.bytes.length];
+        System.arraycopy(this.bytes, 0, newBytes, 0, this.bytes.length);
+        System.arraycopy(seq.bytes, 0, newBytes, this.bytes.length, seq.bytes.length);
+        return new ByteSeq(newBytes);
+    }
+
+    public ByteSeq subSeq(int start) {
+        return new ByteSeq(Arrays.copyOfRange(bytes, start, bytes.length));
+    }
+
     public ByteSeq increasedLastByte() {
         if (isEmpty()) {
             return this;
