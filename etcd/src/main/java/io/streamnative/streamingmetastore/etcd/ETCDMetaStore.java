@@ -50,7 +50,7 @@ public class ETCDMetaStore implements StreamingMetaStoreClient {
     }
 
     public ETCDMetaStore(String endpoints, String keyPrefix) {
-        this.keyPrefix = ByteSeq.from(keyPrefix);
+        this.keyPrefix = keyPrefix != null ? ByteSeq.from(keyPrefix) : null;
         this.client = Client.builder()
                 .endpoints(endpoints)
                 .build();
