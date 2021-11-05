@@ -34,6 +34,7 @@ import io.streamnative.streamingmetastore.api.messages.RevokeResult;
 import io.streamnative.streamingmetastore.api.messages.WatchEvent;
 import io.streamnative.streamingmetastore.api.messages.WatchResult;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -53,6 +54,7 @@ public class ETCDMetaStore implements StreamingMetaStoreClient {
         this.keyPrefix = keyPrefix != null ? ByteSeq.from(keyPrefix) : null;
         this.client = Client.builder()
                 .endpoints(endpoints)
+                .connectTimeout(Duration.ofSeconds(10))
                 .build();
         this.kvClient = client.getKVClient();
         this.watchClient = client.getWatchClient();
